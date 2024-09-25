@@ -45,7 +45,7 @@ class TaskController(private val service: ItemService, private val objectMapper:
         }
 
         val tasks = ObjectMapper().readValue(file.inputStream, object : TypeReference<List<CreateTask>>() {})
-        service.deleteAllTasks() // Предварительное удаление всех задач
+        service.deleteAllTasks()
         tasks.forEach { service.saveTask(it) }
 
         return ResponseEntity.ok("Tasks loaded successfully")

@@ -14,6 +14,5 @@ data class Task(
     val description: String,
     val isDone: Boolean = false,
 ) {
-    // Конструктор по умолчанию для JPA
     constructor() : this(null, "", false)
 }
