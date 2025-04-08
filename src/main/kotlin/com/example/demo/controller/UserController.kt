@@ -1,85 +1,56 @@
 package com.example.demo.controller
 
-import com.example.demo.dto.CreateTask
-import com.example.demo.entity.Task
+import com.example.demo.dto.request.CreateTask
+import com.example.demo.dto.request.EditTaskRequest
+import com.example.demo.dto.response.TaskResponse
 import com.example.demo.service.ItemService
-import com.fasterxml.jackson.core.type.TypeReference
 import org.springframework.http.ResponseEntity
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.springframework.web.bind.annotation.*
-import org.springframework.web.multipart.MultipartFile
-import java.io.BufferedReader
-import java.io.InputStreamReader
 
 @RestController
 @RequestMapping("api/tasks")
 class TaskController(private val service: ItemService, private val objectMapper: ObjectMapper) {
 
-    @PostMapping("create")
-    fun createTask(@RequestBody createTaskDto: CreateTask): ResponseEntity<String> {
-        service.saveTask(createTaskDto)
-        return ResponseEntity.ok("Task created")
-    }
-    @PostMapping("load")
-    fun loadTasks(@RequestBody tasks: List<CreateTask>): ResponseEntity<String> {
-        service.deleteAllTasks()
-        if (tasks.isEmpty()) {
-            return ResponseEntity.badRequest().body("Task list is empty")
-        }
-
-        tasks.forEach { task ->
-            if (task.description.isBlank()) {
-                return ResponseEntity.badRequest().body("Task description cannot be empty")
-            }
-            service.saveTask(task)
-        }
-
-        return ResponseEntity.ok("Tasks loaded successfully")
-    }
-
-
-    @PostMapping("upload")
-    fun uploadTasks(@RequestParam("file") file: MultipartFile): ResponseEntity<String> {
-        if (file.isEmpty) {
-            return ResponseEntity.badRequest().body("File is empty")
-        }
-
-        val tasks = ObjectMapper().readValue(file.inputStream, object : TypeReference<List<CreateTask>>() {})
-        service.deleteAllTasks()
-        tasks.forEach { service.saveTask(it) }
-
-        return ResponseEntity.ok("Tasks loaded successfully")
+    @PostMapping(("create"))
+    fun createTask(@RequestBody request: CreateTask): ResponseEntity<TaskResponse> {
+        val created = service.createTask(request)
+        return ResponseEntity.ok(created)
     }
 
     @GetMapping
-    fun getAllTasks(): ResponseEntity<List<Task>> {
-        val tasks = service.getAllTasks()
+    fun getAllTasks(
+        @RequestParam(required = false, defaultValue = "createdAt") sortBy: String,
+        @RequestParam(required = false, defaultValue = "asc") order: String,
+        @RequestParam(required = false) status: String?,
+        @RequestParam(required = false) isDone: Boolean?,
+        @RequestParam(required = false) priority: String?
+    ): ResponseEntity<List<TaskResponse>> {
+        val tasks = service.getAllTasksFilteredSorted(sortBy, order, status, isDone, priority)
         return ResponseEntity.ok(tasks)
     }
 
-    @GetMapping("{id}")
-    fun getTaskById(@PathVariable id: Long): ResponseEntity<Task?> {
-        val task = service.getTaskById(id)
-        return if (task != null) ResponseEntity.ok(task) else ResponseEntity.notFound().build()
+    @GetMapping("/{id}")
+    fun getTaskById(@PathVariable id: Long): ResponseEntity<TaskResponse> {
+        val task = service.getTaskById(id) ?: return ResponseEntity.notFound().build()
+        return ResponseEntity.ok(task)
     }
 
-    @PutMapping("{id}")
-    fun updateTask(@PathVariable id: Long, @RequestBody updatedTask: Task): ResponseEntity<Task?> {
-        val updated = service.updateTask(id, updatedTask)
-        return if (updated != null) ResponseEntity.ok(updated) else ResponseEntity.notFound().build()
+    @PutMapping("/{id}")
+    fun updateTask(@PathVariable id: Long, @RequestBody request: EditTaskRequest): ResponseEntity<TaskResponse> {
+        val updated = service.editTask(id, request) ?: return ResponseEntity.notFound().build()
+        return ResponseEntity.ok(updated)
     }
 
-    @DeleteMapping("{id}")
-    fun deleteTask(@PathVariable id: Long): ResponseEntity<String> {
+    @PutMapping("/{id}/toggle")
+    fun toggleDone(@PathVariable id: Long): ResponseEntity<TaskResponse> {
+        val result = service.toggleDoneStatus(id) ?: return ResponseEntity.notFound().build()
+        return ResponseEntity.ok(result)
+    }
+
+    @DeleteMapping("/{id}")
+    fun deleteTask(@PathVariable id: Long): ResponseEntity<Void> {
         service.deleteTask(id)
-        return ResponseEntity.ok("Task deleted")
+        return ResponseEntity.noContent().build()
     }
-    @PutMapping("{id}/change-flag")
-    fun changeFlag(@PathVariable id: Long): ResponseEntity<Task?> {
-        val updated = service.changeTaskFlag(id)
-        return if (updated != null) ResponseEntity.ok(updated) else ResponseEntity.notFound().build()
-    }
-
-
-
 }

@@ -1,40 +1,109 @@
 package com.example.demo.service
-import com.example.demo.dto.CreateTask
-import com.example.demo.dto.toDoMain
+import com.example.demo.Mapper.TaskMapper
+import com.example.demo.dto.request.CreateTask
+import com.example.demo.dto.request.EditTaskRequest
+import com.example.demo.dto.response.TaskResponse
 import com.example.demo.entity.Task
+import com.example.demo.enums.TaskPriority
+import com.example.demo.enums.TaskStatus
 import com.example.demo.repository.ItemRepository
 import org.springframework.stereotype.Service
+import java.time.LocalDate
 
 
 @Service
 class ItemService(private val repository : ItemRepository) {
 
-    fun saveTask(createTaskDto: CreateTask) {
-        repository.save(createTaskDto.toDoMain())
+    fun createTask(request: CreateTask): TaskResponse {
+        val task = TaskMapper.fromCreateRequest(request)
+        val saved = repository.save(updateStatus(task))
+        return TaskMapper.toResponse(saved)
     }
-    fun getAllTasks(): List<Task> {
-        return repository.findAll()
+    fun getAllTasksFilteredSorted(
+        sortBy: String,
+        order: String,
+        status: String?,
+        isDone: Boolean?,
+        priority: String?
+    ): List<TaskResponse> {
+        val allTasks = repository.findAll().map { updateStatus(it) }
+
+        val filtered = allTasks.filter { task ->
+            val statusMatches = status?.let {
+                try {
+                    task.status == TaskStatus.valueOf(it.capitalize())
+                } catch (e: IllegalArgumentException) {
+                    false
+                }
+            } ?: true
+
+            val doneMatches = isDone?.let { task.isDone == it } ?: true
+
+            val priorityMatches = priority?.let {
+                try {
+                    task.priority == TaskPriority.valueOf(it.capitalize())
+                } catch (e: IllegalArgumentException) {
+                    false
+                }
+            } ?: true
+
+            statusMatches && doneMatches && priorityMatches
+        }
+
+        val sorted = when (sortBy.lowercase()) {
+            "priority" -> filtered.sortedBy { it.priority.ordinal }
+            "createdat" -> filtered.sortedBy { it.createdAt }
+            "updatedat" -> filtered.sortedBy { it.updatedAt }
+            "deadline" -> filtered.sortedBy { it.deadline ?: LocalDate.MAX }
+            "status" -> filtered.sortedBy { it.status.ordinal }
+            "isdone" -> filtered.sortedBy { it.isDone }
+            else -> filtered.sortedBy { it.createdAt }
+        }
+
+        val ordered = if (order.equals("desc", ignoreCase = true)) sorted.reversed() else sorted
+
+        return ordered.map(TaskMapper::toResponse)
     }
 
-    fun getTaskById(id: Long): Task? {
-        return repository.findById(id).orElse(null)
+    fun getTaskById(id: Long): TaskResponse? {
+        val task = repository.findById(id).orElse(null) ?: return null
+        return TaskMapper.toResponse(updateStatus(task))
     }
 
-    fun updateTask(id: Long, updatedTask: Task): Task? {
-        val existingTask = repository.findById(id).orElse(null) ?: return null
-        val newTask = existingTask.copy(description = updatedTask.description, isDone = updatedTask.isDone)
-        return repository.save(newTask)
+    fun editTask(id: Long, request: EditTaskRequest): TaskResponse? {
+        val existing = repository.findById(id).orElse(null) ?: return null
+        val updated = TaskMapper.fromEditRequest(request, existing)
+        val finalTask = updateStatus(updated)
+        return TaskMapper.toResponse(repository.save(finalTask))
     }
 
     fun deleteTask(id: Long) {
         repository.deleteById(id)
     }
-    fun deleteAllTasks() {
-        repository.deleteAll()
+
+    fun toggleDoneStatus(id: Long): TaskResponse? {
+        val existing = repository.findById(id).orElse(null) ?: return null
+        val now = LocalDate.now()
+        val toggled = existing.copy(
+            isDone = !existing.isDone,
+            status = resolveStatus(existing.deadline, !existing.isDone, now),
+            updatedAt = now
+        )
+        return TaskMapper.toResponse(repository.save(toggled))
     }
-    fun changeTaskFlag(id: Long): Task? {
-        val existingTask = repository.findById(id).orElse(null) ?: return null
-        val updatedTask = existingTask.copy(isDone = !existingTask.isDone)
-        return repository.save(updatedTask)
+
+    private fun updateStatus(task: Task): Task {
+        val now = LocalDate.now()
+        val status = resolveStatus(task.deadline, task.isDone, now)
+        return task.copy(status = status)
+    }
+
+    private fun resolveStatus(deadline: LocalDate?, isDone: Boolean, now: LocalDate): TaskStatus {
+        return when {
+            isDone && deadline != null && now.isAfter(deadline) -> TaskStatus.Late
+            isDone -> TaskStatus.Completed
+            deadline != null && now.isAfter(deadline) -> TaskStatus.Overdue
+            else -> TaskStatus.Active
+        }
     }
 }
