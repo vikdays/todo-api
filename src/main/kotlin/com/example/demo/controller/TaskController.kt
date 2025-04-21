@@ -5,14 +5,13 @@ import com.example.demo.dto.request.EditTaskRequest
 import com.example.demo.dto.response.TaskResponse
 import com.example.demo.service.ItemService
 import org.springframework.http.ResponseEntity
-import com.fasterxml.jackson.databind.ObjectMapper
 import org.springframework.web.bind.annotation.*
 
 @RestController
 @RequestMapping("api/tasks")
-class TaskController(private val service: ItemService, private val objectMapper: ObjectMapper) {
+class TaskController(private val service: ItemService) {
 
-    @PostMapping(("create"))
+    @PostMapping("/create")
     fun createTask(@RequestBody request: CreateTask): ResponseEntity<TaskResponse> {
         val created = service.createTask(request)
         return ResponseEntity.ok(created)
@@ -32,20 +31,23 @@ class TaskController(private val service: ItemService, private val objectMapper:
 
     @GetMapping("/{id}")
     fun getTaskById(@PathVariable id: Long): ResponseEntity<TaskResponse> {
-        val task = service.getTaskById(id) ?: return ResponseEntity.notFound().build()
-        return ResponseEntity.ok(task)
+        return service.getTaskById(id)
+            ?.let { ResponseEntity.ok(it) }
+            ?: ResponseEntity.notFound().build()
     }
 
     @PutMapping("/{id}")
     fun updateTask(@PathVariable id: Long, @RequestBody request: EditTaskRequest): ResponseEntity<TaskResponse> {
-        val updated = service.editTask(id, request) ?: return ResponseEntity.notFound().build()
-        return ResponseEntity.ok(updated)
+        return service.editTask(id, request)
+            ?.let { ResponseEntity.ok(it) }
+            ?: ResponseEntity.notFound().build()
     }
 
     @PutMapping("/{id}/toggle")
     fun toggleDone(@PathVariable id: Long): ResponseEntity<TaskResponse> {
-        val result = service.toggleDoneStatus(id) ?: return ResponseEntity.notFound().build()
-        return ResponseEntity.ok(result)
+        return service.toggleDoneStatus(id)
+            ?.let { ResponseEntity.ok(it) }
+            ?: ResponseEntity.notFound().build()
     }
 
     @DeleteMapping("/{id}")

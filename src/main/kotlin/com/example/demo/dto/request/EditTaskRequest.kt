@@ -6,6 +6,6 @@ import java.time.LocalDate
 data class EditTaskRequest(
     val title: String? = null,
     val description: String? = null,
-    val deadline: LocalDate? = null,
+    val deadline: String? = null,
     val priority: TaskPriority? = null
 )

@@ -18,7 +18,14 @@ object TaskMapper {
     private val dateFormatter = DateTimeFormatter.ofPattern("dd.MM.yyyy")
 
     fun fromCreateRequest(request: CreateTask): Task {
+        if (request.title.isBlank()) {
+            throw IllegalArgumentException("Title can't be empty!")
+        }
         val macros = extractMacros(request.title)
+
+        if (macros.cleanedTitle.length < 4) {
+            throw IllegalArgumentException("Минимальная длина заголовка — 4 символа. Было: ${macros.cleanedTitle.length}")
+        }
 
         val effectiveDeadline = when {
             request.deadline != null -> parseDate(request.deadline)
@@ -64,7 +71,7 @@ object TaskMapper {
                     }
                     parsedDate
                 } catch (e: Exception) {
-                    throw IllegalArgumentException("Неверный формат даты: ${request.deadline}. Используйте dd.MM.yyyy, dd-MM-yyyy или yyyy-MM-dd")
+                    throw IllegalArgumentException("${e.message}")
                 }
             }
 
@@ -106,15 +113,21 @@ object TaskMapper {
         var priority: TaskPriority? = null
         var deadline: LocalDate? = null
 
-        priorityRegex.find(title)?.let {
-            priority = when (it.groupValues[1]) {
-                "1" -> TaskPriority.Critical
-                "2" -> TaskPriority.High
-                "3" -> TaskPriority.Medium
-                "4" -> TaskPriority.Low
-                else -> throw IllegalArgumentException("Недопустимый приоритет: ${it.groupValues[1]}")
+        val generalPriorityRegex = Regex("!([1-4])")
+        generalPriorityRegex.find(title)?.let {
+            val value = it.groupValues[1].toIntOrNull()
+            priority = when (value) {
+                1 -> TaskPriority.Critical
+                2 -> TaskPriority.High
+                3 -> TaskPriority.Medium
+                4 -> TaskPriority.Low
+                else -> null
             }
-            title = title.replace(it.value, "").trim()
+            title = title.replaceFirst(it.value, "").trim()
+        }
+
+        if (title.contains("!before") && deadlineRegex.find(title) == null) {
+            throw IllegalArgumentException("Макрос дедлайна написан с ошибкой или не содержит дату. Используйте формат dd.MM.yyyy или dd-MM-yyyy")
         }
 
         deadlineRegex.find(title)?.let {
@@ -123,9 +136,6 @@ object TaskMapper {
             val normalized = originalStr.replace("-", ".")
             val strictDateRegex = Regex("""\d{2}\.\d{2}\.\d{4}""")
 
-            if (!strictDateRegex.matches(normalized)) {
-                throw IllegalArgumentException("Некорректный формат даты: $originalStr. Используйте dd.MM.yyyy или dd-MM-yyyy.")
-            }
 
             try {
                 val parsedDate = LocalDate.parse(normalized, dateFormatter)
@@ -134,10 +144,13 @@ object TaskMapper {
                 }
                 deadline = parsedDate
             } catch (e: Exception) {
-                throw IllegalArgumentException("Дата указана некорректно: $originalStr")
+                throw IllegalArgumentException("Некорректный формат даты: $originalStr (${e.message})")
             }
 
-            title = title.replace(it.value, "").trim()
+            title = title.replaceFirst(it.value, "").trim()
+            if (title.length < 4) {
+                throw IllegalArgumentException("Минимальная длина заголовка — 4 символа. Было: '${title.length}'")
+            }
         }
 
         return MacroParseResult(
@@ -158,7 +171,7 @@ fun parseDate(dateStr: String): LocalDate {
         try {
             return LocalDate.parse(dateStr, formatter)
         } catch (e: DateTimeParseException) {
-           throw e;
+           continue;
         }
     }
     throw IllegalArgumentException("Неподдерживаемый формат даты: $dateStr")

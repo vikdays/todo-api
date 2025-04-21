@@ -1,4 +1,5 @@
 package com.example.demo.service
+
 import com.example.demo.Mapper.TaskMapper
 import com.example.demo.dto.request.CreateTask
 import com.example.demo.dto.request.EditTaskRequest
@@ -10,15 +11,15 @@ import com.example.demo.repository.ItemRepository
 import org.springframework.stereotype.Service
 import java.time.LocalDate
 
-
 @Service
-class ItemService(private val repository : ItemRepository) {
+class ItemService(private val repository: ItemRepository) {
 
     fun createTask(request: CreateTask): TaskResponse {
         val task = TaskMapper.fromCreateRequest(request)
         val saved = repository.save(updateStatus(task))
         return TaskMapper.toResponse(saved)
     }
+
     fun getAllTasksFilteredSorted(
         sortBy: String,
         order: String,
@@ -30,21 +31,17 @@ class ItemService(private val repository : ItemRepository) {
 
         val filtered = allTasks.filter { task ->
             val statusMatches = status?.let {
-                try {
+                runCatching {
                     task.status == TaskStatus.valueOf(it.capitalize())
-                } catch (e: IllegalArgumentException) {
-                    false
-                }
+                }.getOrDefault(false)
             } ?: true
 
             val doneMatches = isDone?.let { task.isDone == it } ?: true
 
             val priorityMatches = priority?.let {
-                try {
+                runCatching {
                     task.priority == TaskPriority.valueOf(it.capitalize())
-                } catch (e: IllegalArgumentException) {
-                    false
-                }
+                }.getOrDefault(false)
             } ?: true
 
             statusMatches && doneMatches && priorityMatches
@@ -60,9 +57,11 @@ class ItemService(private val repository : ItemRepository) {
             else -> filtered.sortedBy { it.createdAt }
         }
 
-        val ordered = if (order.equals("desc", ignoreCase = true)) sorted.reversed() else sorted
-
-        return ordered.map(TaskMapper::toResponse)
+        return if (order.equals("desc", ignoreCase = true)) {
+            sorted.reversed()
+        } else {
+            sorted
+        }.map(TaskMapper::toResponse)
     }
 
     fun getTaskById(id: Long): TaskResponse? {
@@ -73,11 +72,14 @@ class ItemService(private val repository : ItemRepository) {
     fun editTask(id: Long, request: EditTaskRequest): TaskResponse? {
         val existing = repository.findById(id).orElse(null) ?: return null
         val updated = TaskMapper.fromEditRequest(request, existing)
-        val finalTask = updateStatus(updated)
-        return TaskMapper.toResponse(repository.save(finalTask))
+        val saved = repository.save(updateStatus(updated))
+        return TaskMapper.toResponse(saved)
     }
 
     fun deleteTask(id: Long) {
+        if (!repository.existsById(id)) {
+            throw IllegalArgumentException("Задача с id $id не найдена")
+        }
         repository.deleteById(id)
     }
 
